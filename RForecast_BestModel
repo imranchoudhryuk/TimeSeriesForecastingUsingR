@@ -1,0 +1,126 @@
+suppressPackageStartupMessages(require(forecast))
+
+data=E_Cubedata
+data <- data[with(data, order(Years)),]
+Sales <- data$Value
+Sales.ts <- ts(Sales, frequency=12, start=c(${InputStartYear},1))
+Count <- 1:${_PredictMonths}
+Comparison_Criteria <- numeric(4)
+
+#ARIMA
+
+SalesArima <- auto.arima(Sales.ts)
+Portm <- Box.test(SalesArima$residuals, lag=20, type="Ljung-Box")
+if(Portm$p.value<0.3) {SalesArima <- auto.arima(Sales.ts,D=1); Portm <- Box.test(SalesArima$residuals, lag=20, type="Ljung-Box")}
+
+int <- "intercept" %in% names(SalesArima$coef)
+if (int==TRUE) {int <- "with non-zero mean"}
+if (int==FALSE) {int <- "drift" %in% names(SalesArima$coef)}
+if (int==TRUE) {int <- "with drift"} else {int <- NULL}
+
+pdq <- as.data.frame(SalesArima$arma)
+Model <- vector(mode="character", length=${_PredictMonths})
+Model[1] <- paste("ARIMA(",pdq[1,],",",pdq[6,],",",pdq[2,],")(",pdq[3,],",",pdq[7,],",",pdq[4,],")","[",pdq[5,],"] ",int,sep="")
+
+acc <- as.data.frame(accuracy(SalesArima))
+RMSE <- vector(mode="character", length=${_PredictMonths})
+MASE <- vector(mode="character", length=${_PredictMonths})
+RMSE[1] <- acc$RMSE
+MASE[1] <- acc$MASE
+Comparison_Criteria[1] <- acc$RMSE
+
+SalesArima.forecast <- forecast.Arima(SalesArima,h=${_PredictMonths})
+Tableau <- as.data.frame(SalesArima.forecast)
+LowerBound <- Tableau[,4]
+UpperBound <- Tableau[,5]
+Fit <- Tableau[,1]
+
+Result_ARIMA <- data.frame(Count, Fit, LowerBound, UpperBound, Model, RMSE, MASE)
+
+#HOLT-WINTERS
+
+try(HoltW <- hw(Sales.ts,h=${_PredictMonths}), silent = TRUE)
+OneRun <- "HoltW" %in% ls()
+if (OneRun==FALSE) {HoltW <- hw(Sales.ts, optim.start=c(alpha=0.3,beta=0.2,gamma=0.1))}
+parameters <- as.data.frame(HoltW$model$par)
+
+Model <- vector(mode="character", length=${_PredictMonths})
+Model[1] <- paste("Holt-Winters Exponential Smoothing")
+acc <- as.data.frame(accuracy(HoltW))
+RMSE <- vector(mode="character", length=${_PredictMonths})
+MASE <- vector(mode="character", length=${_PredictMonths})
+RMSE[1] <- acc$RMSE
+MASE[1] <- acc$MASE
+Comparison_Criteria[2] <- acc$RMSE
+
+HoltW <- as.data.frame(HoltW)
+LowerBound <- HoltW[,4]
+UpperBound <- HoltW[,5]
+Fit <- HoltW[,1]
+
+Result_HW <- data.frame(Count, Fit, LowerBound, UpperBound, Model, RMSE, MASE)
+
+#LM
+if(${_InputMonths}>=${_PredictMonths})
+{
+t <- 1:${_InputMonths}
+
+linReg <- lm(Sales~t)
+lm.summary <- summary(linReg)
+ 
+Model <- vector(mode="character", length=${_PredictMonths})
+Model[1] <- paste("Linear Regression")
+
+acc <- as.data.frame(accuracy(linReg))
+RMSE <- vector(mode="character", length=${_PredictMonths})
+MASE <- vector(mode="character", length=${_PredictMonths})
+RMSE[1] <- acc$RMSE
+MASE[1] <- acc$MASE
+Comparison_Criteria[3] <- acc$RMSE
+
+t <- (${_InputMonths}+1):(${_InputMonths}+${_PredictMonths})
+t <- as.data.frame(t)
+
+Forecast <- predict(linReg, newdata=t, interval="predict")
+Forecast <- as.data.frame(Forecast)
+Fit <- Forecast$fit
+LowerBound <- Forecast$lwr
+UpperBound <- Forecast$upr
+
+Result_LM <- data.frame(Count, Fit, LowerBound, UpperBound, Model, RMSE, MASE)
+
+#LMwithCycle
+
+linReg <- lm(Sales.ts ~ time(Sales.ts) + factor(cycle(Sales.ts)))
+lm.summary <- summary(linReg)
+
+
+Model <- vector(mode="character", length=${_PredictMonths})
+Model[1] <- paste("Linear Regression with Seasonal Component")
+
+acc <- as.data.frame(accuracy(linReg))
+RMSE <- vector(mode="character", length=${_PredictMonths})
+MASE <- vector(mode="character", length=${_PredictMonths})
+RMSE[1] <- acc$RMSE
+MASE[1] <- acc$MASE
+Comparison_Criteria[4] <- acc$RMSE
+
+SalesNew.ts <- ts(start=c(${_PredictStartYear},1),end=c(${_PredictEndYear},12),frequency=12)
+SalesNew.ts <- data.frame(time(SalesNew.ts), factor(cycle(SalesNew.ts)))
+
+Forecast <- predict(linReg, newdata=SalesNew.ts, interval="predict")
+Forecast <- as.data.frame(Forecast)
+Fit <- Forecast$fit
+LowerBound <- Forecast$lwr
+UpperBound <- Forecast$upr
+
+Result_LMwithCycle <- data.frame(Count, Fit, LowerBound, UpperBound, Model, RMSE, MASE)
+}
+#Choosing-Process
+
+Choosed_Model <- which.min(Comparison_Criteria)
+
+if (Choosed_Model == 1) {Result <- Result_ARIMA}
+if (Choosed_Model == 2) {Result <- Result_HW}
+if (Choosed_Model == 3) {Result <- Result_LM}
+if (Choosed_Model == 4) {Result <- Result_LMwithCycle}
