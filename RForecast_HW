@@ -1,0 +1,28 @@
+suppressPackageStartupMessages(require(forecast))
+
+data=E_Cubedata
+data <- data[with(data,order(Years)),]
+Sales <- data$Value
+Sales.ts <- ts(Sales, frequency=12, start=c(${InputStartYear},1))
+
+try(HoltW <- hw(Sales.ts,h=${_PredictMonths}), silent = TRUE)
+OneRun <- "HoltW" %in% ls()
+if (OneRun==FALSE) {HoltW <- hw(Sales.ts, optim.start=c(alpha=0.3,beta=0.2,gamma=0.1))}
+parameters <- as.data.frame(HoltW$model$par)
+
+Model <- vector(mode="character", length=${_PredictMonths})
+Model[1] <- paste("alpha = ",parameters[1,1], ", beta = ",parameters[2,1], ", gamma = ",parameters[3,1], sep="")
+acc <- as.data.frame(accuracy(HoltW))
+RMSE <- vector(mode="character", length=${_PredictMonths})
+MASE <- vector(mode="character", length=${_PredictMonths})
+RMSE[1] <- acc$RMSE
+MASE[1] <- acc$MASE
+
+Count <- 1:${_PredictMonths}
+
+HoltW <- as.data.frame(HoltW)
+LowerBound <- HoltW[,4]
+UpperBound <- HoltW[,5]
+Fit <- HoltW[,1]
+
+Result <- data.frame(Count, Fit, LowerBound, UpperBound, Model, RMSE, MASE)
