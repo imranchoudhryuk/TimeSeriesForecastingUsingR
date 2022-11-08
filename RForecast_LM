@@ -1,0 +1,36 @@
+suppressPackageStartupMessages(require(forecast))
+
+data=E_Cubedata
+data <- data[with(data,order(Years)),]
+
+Sales <- data$Value
+t <- 1:${_InputMonths}
+
+linReg <- lm(Sales~t)
+lm.summary <- summary(linReg)
+
+coef <- as.data.frame(lm.summary$coef)
+Model <- vector(mode="character", length=${_PredictMonths})
+Model[1] <- paste("${Measure} = ", coef[1,1]," + ", coef[2,1], " t", sep="")
+PValue <- vector(mode="character", length=${_PredictMonths})
+PValue[1] <- paste(coef[1,4],coef[2,4],sep="\t")
+R² <- vector(mode="character", length=${_PredictMonths})
+R²[1] <- lm.summary$r.squared
+
+acc <- as.data.frame(accuracy(linReg))
+RMSE <- vector(mode="character", length=${_PredictMonths})
+MASE <- vector(mode="character", length=${_PredictMonths})
+RMSE[1] <- acc$RMSE
+MASE[1] <- acc$MASE
+
+t <- (${_InputMonths}+1):(${_InputMonths}+${_PredictMonths})
+t <- as.data.frame(t)
+
+Forecast <- predict(linReg, newdata=t, interval="predict")
+Forecast <- as.data.frame(Forecast)
+Fit <- Forecast$fit
+LowerBound <- Forecast$lwr
+UpperBound <- Forecast$upr
+Count <- 1:${_PredictMonths}
+
+Result <- data.frame(Count, Fit, LowerBound, UpperBound, Model, PValue, R², RMSE, MASE)
