@@ -1,0 +1,41 @@
+suppressPackageStartupMessages(require(forecast))
+
+data=E_Cubedata
+data <- data[with(data,order(Years)),]
+Sales <- data$Value
+Sales.ts <- ts(Sales, frequency=12, start=c(${InputStartYear},1))
+
+SalesArima <- auto.arima(Sales.ts)
+Portm <- Box.test(SalesArima$residuals, lag=20, type="Ljung-Box")
+if(Portm$p.value<0.3) {SalesArima <- auto.arima(Sales.ts,D=1); Portm <- Box.test(SalesArima$residuals, lag=20, type="Ljung-Box")}
+
+int <- "intercept" %in% names(SalesArima$coef)
+if (int==TRUE) {int <- "with non-zero mean"}
+if (int==FALSE) {int <- "drift" %in% names(SalesArima$coef)}
+if (int==TRUE) {int <- "with drift"} else {int <- NULL}
+
+pdq <- as.data.frame(SalesArima$arma)
+Model <- vector(mode="character", length=${_PredictMonths})
+Model[1] <- paste("ARIMA(",pdq[1,],",",pdq[6,],",",pdq[2,],")(",pdq[3,],",",pdq[7,],",",pdq[4,],")","[",pdq[5,],"] ",int,sep="")
+
+Portm <- Box.test(SalesArima$residuals, lag=20, type="Ljung-Box")
+Portmanteau <- vector(mode="character", length=${_PredictMonths})
+Portmanteau[1] <- Portm$p.value
+AIC <- vector(mode="character", length=${_PredictMonths})
+AIC[1] <- SalesArima$aic
+
+acc <- as.data.frame(accuracy(SalesArima))
+RMSE <- vector(mode="character", length=${_PredictMonths})
+MASE <- vector(mode="character", length=${_PredictMonths})
+RMSE[1] <- acc$RMSE
+MASE[1] <- acc$MASE
+
+SalesArima.forecast <- forecast.Arima(SalesArima,h=${_PredictMonths})
+Tableau <- as.data.frame(SalesArima.forecast)
+LowerBound <- Tableau[,4]
+UpperBound <- Tableau[,5]
+Fit <- Tableau[,1]
+
+Count <- 1:${_PredictMonths}
+
+Result <- data.frame(Count, Fit, LowerBound, UpperBound, Model, Portmanteau, AIC, RMSE, MASE)
